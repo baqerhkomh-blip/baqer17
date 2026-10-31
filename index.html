@@ -1,0 +1,342 @@
+import React, { useState, useMemo, useEffect } from "react";
+import {
+  Trophy,
+  Calendar,
+  Users,
+  Award,
+  Lock,
+  Unlock,
+  RotateCcw,
+  Share2,
+  Check,
+  Sparkles,
+  ShieldAlert,
+} from "lucide-react";
+
+// البيانات الأساسية للمجموعات واللاعبين بناءً على طلبك
+const INITIAL_GROUPS = {
+  A: [
+    { id: "A1", player: "مصطفى مزاحم", country: "النمسا", flag: "🇦🇹" },
+    { id: "A2", player: "يوسف حسن", country: "النرويج", flag: "🇳🇴" },
+    { id: "A3", player: "هاشم", country: "كرواتيا", flag: "🇭🇷" },
+    { id: "A4", player: "مشعان", country: "البوسنة والهرسك", flag: "🇧🇦" },
+  ],
+  B: [
+    { id: "B1", player: "باقر", country: "فرنسا", flag: "🇫🇷" },
+    { id: "B2", player: "رضا", country: "الدنمارك", flag: "🇩🇰" },
+    { id: "B3", player: "أمير", country: "ألبانيا", flag: "🇦🇱" },
+    { id: "B4", player: "هترو", country: "بولندا", flag: "🇵🇱" },
+  ],
+  C: [
+    { id: "C1", player: "محمد", country: "المجر", flag: "🇭🇺" },
+    { id: "C2", player: "فينوم", country: "هولندا", flag: "🇳🇱" },
+    { id: "C3", player: "ابن وحيد", country: "سويسرا", flag: "🇨🇭" },
+    { id: "C4", player: "محمود", country: "روسيا", flag: "🇷🇺" },
+  ],
+  D: [
+    { id: "D1", player: "عباس", country: "تركيا", flag: "🇹🇷" },
+    { id: "D2", player: "زيد", country: "أيرلندا", flag: "🇮🇪" },
+    { id: "D3", player: "ماثيو", country: "جبل طارق", flag: "🇬🇮" },
+    { id: "D4", player: "لوسيفر", country: "جورجيا", flag: "🇬🇪" },
+  ],
+  E: [
+    { id: "E1", player: "مصطفى كربلاء", country: "إنجلترا", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿" },
+    { id: "E2", player: "قديس", country: "إسبانيا", flag: "🇪🇸" },
+    { id: "E3", player: "أحمد", country: "بلجيكا", flag: "🇧🇪" },
+    { id: "E4", player: "سابو", country: "إيطاليا", flag: "🇮🇹" },
+  ],
+  F: [
+    { id: "F1", player: "كوفن", country: "ألمانيا", flag: "🇩🇪" },
+    { id: "F2", player: "محمد باسم", country: "ويلز", flag: "🏴󠁧󠁢󠁷󠁬󠁳󠁿" },
+    { id: "F3", player: "علي", country: "البرتغال", flag: "🇵🇹" },
+    { id: "F4", player: "ياتو", country: "إسكتلندا", flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿" },
+  ],
+};
+
+// توليد جدول مباريات المجموعات الرسمي (36 مباراة)
+const generateGroupMatches = () => {
+  const matches = [];
+  Object.keys(INITIAL_GROUPS).forEach((groupKey) => {
+    const t = INITIAL_GROUPS[groupKey];
+    matches.push({ id: `${groupKey}_R1_1`, group: groupKey, round: 1, home: t[0], away: t[1] });
+    matches.push({ id: `${groupKey}_R1_2`, group: groupKey, round: 1, home: t[2], away: t[3] });
+    matches.push({ id: `${groupKey}_R2_1`, group: groupKey, round: 2, home: t[0], away: t[2] });
+    matches.push({ id: `${groupKey}_R2_2`, group: groupKey, round: 2, home: t[1], away: t[3] });
+    matches.push({ id: `${groupKey}_R3_1`, group: groupKey, round: 3, home: t[3], away: t[0] });
+    matches.push({ id: `${groupKey}_R3_2`, group: groupKey, round: 3, home: t[1], away: t[2] });
+  });
+  return matches;
+};
+
+const ALL_GROUP_MATCHES = generateGroupMatches();
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState("groups");
+  const [selectedRound, setSelectedRound] = useState(1);
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState("ALL");
+
+  const [scores, setScores] = useState({});
+  const [knockoutScores, setKnockoutScores] = useState({});
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [passcode, setPasscode] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const ADMIN_SECRET = "2026";
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedData = params.get("data");
+
+    if (sharedData) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(atob(sharedData)));
+        if (decoded.s) setScores(decoded.s);
+        if (decoded.k) setKnockoutScores(decoded.k);
+        localStorage.setItem("euro_scores_v2", JSON.stringify(decoded.s || {}));
+        localStorage.setItem("euro_knockout_v2", JSON.stringify(decoded.k || {}));
+        return;
+      } catch (err) {
+        console.error("خطأ في قراءة بيانات الرابط:", err);
+      }
+    }
+
+    const savedScores = localStorage.getItem("euro_scores_v2");
+    const savedKnockout = localStorage.getItem("euro_knockout_v2");
+    if (savedScores) setScores(JSON.parse(savedScores));
+    if (savedKnockout) setKnockoutScores(JSON.parse(savedKnockout));
+  }, []);
+
+  const saveState = (newScores, newKnockout) => {
+    localStorage.setItem("euro_scores_v2", JSON.stringify(newScores));
+    localStorage.setItem("euro_knockout_v2", JSON.stringify(newKnockout));
+  };
+
+  const handleScoreChange = (matchId, side, value) => {
+    if (!isAdmin) return;
+    const cleanVal = value === "" ? "" : Math.max(0, parseInt(value, 10) || 0);
+    const updated = {
+      ...scores,
+      [matchId]: {
+        ...(scores[matchId] || { home: "", away: "" }),
+        [side]: cleanVal,
+      },
+    };
+    setScores(updated);
+    saveState(updated, knockoutScores);
+  };
+
+  const handleKnockoutScoreChange = (matchId, side, value) => {
+    if (!isAdmin) return;
+    const cleanVal = value === "" ? "" : Math.max(0, parseInt(value, 10) || 0);
+    const updated = {
+      ...knockoutScores,
+      [matchId]: {
+        ...(knockoutScores[matchId] || { home: "", away: "" }),
+        [side]: cleanVal,
+      },
+    };
+    setKnockoutScores(updated);
+    saveState(scores, updated);
+  };
+
+  const copyShareableLink = () => {
+    const payload = { s: scores, k: knockoutScores };
+    const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+    const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`;
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
+  };
+
+  const simulateRandomScores = () => {
+    if (!isAdmin) return;
+    const randomScores = {};
+    ALL_GROUP_MATCHES.forEach((m) => {
+      randomScores[m.id] = {
+        home: Math.floor(Math.random() * 4),
+        away: Math.floor(Math.random() * 4),
+      };
+    });
+    setScores(randomScores);
+    saveState(randomScores, knockoutScores);
+  };
+
+  const resetTournament = () => {
+    if (!isAdmin) return;
+    if (window.confirm("هل أنت متأكد من مسح جميع نتائج البطولة بالكامل؟")) {
+      setScores({});
+      setKnockoutScores({});
+      saveState({}, {});
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  };
+
+  const standings = useMemo(() => {
+    const result = {};
+    Object.keys(INITIAL_GROUPS).forEach((groupKey) => {
+      const stats = {};
+      INITIAL_GROUPS[groupKey].forEach((team) => {
+        stats[team.id] = {
+          ...team,
+          group: groupKey,
+          played: 0,
+          won: 0,
+          drawn: 0,
+          lost: 0,
+          gf: 0,
+          ga: 0,
+          gd: 0,
+          pts: 0,
+        };
+      });
+
+      ALL_GROUP_MATCHES.filter((m) => m.group === groupKey).forEach((match) => {
+        const sc = scores[match.id];
+        if (sc && sc.home !== "" && sc.away !== "" && sc.home !== undefined && sc.away !== undefined) {
+          const h = parseInt(sc.home, 10);
+          const a = parseInt(sc.away, 10);
+          const homeTeam = stats[match.home.id];
+          const awayTeam = stats[match.away.id];
+
+          homeTeam.played += 1;
+          awayTeam.played += 1;
+          homeTeam.gf += h;
+          homeTeam.ga += a;
+          homeTeam.gd = homeTeam.gf - homeTeam.ga;
+          awayTeam.gf += a;
+          awayTeam.ga += h;
+          awayTeam.gd = awayTeam.gf - awayTeam.ga;
+
+          if (h > a) {
+            homeTeam.won += 1;
+            homeTeam.pts += 3;
+            awayTeam.lost += 1;
+          } else if (h < a) {
+            awayTeam.won += 1;
+            awayTeam.pts += 3;
+            homeTeam.lost += 1;
+          } else {
+            homeTeam.drawn += 1;
+            awayTeam.drawn += 1;
+            homeTeam.pts += 1;
+            awayTeam.pts += 1;
+          }
+        }
+      });
+
+      result[groupKey] = Object.values(stats).sort((a, b) => {
+        if (b.pts !== a.pts) return b.pts - a.pts;
+        if (b.gd !== a.gd) return b.gd - a.gd;
+        return b.gf - a.gf;
+      });
+    });
+    return result;
+  }, [scores]);
+
+  const thirdPlaceTeams = useMemo(() => {
+    const thirds = Object.keys(standings).map((g) => standings[g][2]);
+    return thirds.sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      if (b.gd !== a.gd) return b.gd - a.gd;
+      return b.gf - a.gf;
+    });
+  }, [standings]);
+
+  const bracket = useMemo(() => {
+    const best4Thirds = thirdPlaceTeams.slice(0, 4);
+    const r16 = [
+      { id: "R16_1", title: "ثمن النهائي 1", home: standings.B[0], away: best4Thirds[0] },
+      { id: "R16_2", title: "ثمن النهائي 2", home: standings.A[0], away: standings.C[1] },
+      { id: "R16_3", title: "ثمن النهائي 3", home: standings.F[0], away: best4Thirds[1] },
+      { id: "R16_4", title: "ثمن النهائي 4", home: standings.D[1], away: standings.E[1] },
+      { id: "R16_5", title: "ثمن النهائي 5", home: standings.E[0], away: best4Thirds[2] },
+      { id: "R16_6", title: "ثمن النهائي 6", home: standings.D[0], away: standings.F[1] },
+      { id: "R16_7", title: "ثمن النهائي 7", home: standings.C[0], away: best4Thirds[3] },
+      { id: "R16_8", title: "ثمن النهائي 8", home: standings.A[1], away: standings.B[1] },
+    ];
+
+    const getWinner = (matchId, homeTeam, awayTeam) => {
+      const sc = knockoutScores[matchId];
+      if (!sc || sc.home === "" || sc.away === "" || !homeTeam || !awayTeam) return null;
+      const h = parseInt(sc.home, 10);
+      const a = parseInt(sc.away, 10);
+      if (h > a) return homeTeam;
+      if (a > h) return awayTeam;
+      return homeTeam;
+    };
+
+    const qf = [
+      { id: "QF_1", title: "ربع النهائي 1", home: getWinner("R16_1", r16[0].home, r16[0].away), away: getWinner("R16_2", r16[1].home, r16[1].away) },
+      { id: "QF_2", title: "ربع النهائي 2", home: getWinner("R16_3", r16[2].home, r16[2].away), away: getWinner("R16_4", r16[3].home, r16[3].away) },
+      { id: "QF_3", title: "ربع النهائي 3", home: getWinner("R16_5", r16[4].home, r16[4].away), away: getWinner("R16_6", r16[5].home, r16[5].away) },
+      { id: "QF_4", title: "ربع النهائي 4", home: getWinner("R16_7", r16[6].home, r16[6].away), away: getWinner("R16_8", r16[7].home, r16[7].away) },
+    ];
+
+    const sf = [
+      { id: "SF_1", title: "نصف النهائي 1", home: getWinner("QF_1", qf[0].home, qf[0].away), away: getWinner("QF_2", qf[1].home, qf[1].away) },
+      { id: "SF_2", title: "نصف النهائي 2", home: getWinner("QF_3", qf[2].home, qf[2].away), away: getWinner("QF_4", qf[3].home, qf[3].away) },
+    ];
+
+    const finalMatch = {
+      id: "FINAL",
+      title: "النهائي الكبير 🏆",
+      home: getWinner("SF_1", sf[0].home, sf[0].away),
+      away: getWinner("SF_2", sf[1].home, sf[1].away),
+    };
+
+    const champion = getWinner("FINAL", finalMatch.home, finalMatch.away);
+
+    return { r16, qf, sf, finalMatch, champion };
+  }, [standings, thirdPlaceTeams, knockoutScores]);
+
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    if (passcode === ADMIN_SECRET) {
+      setIsAdmin(true);
+      setShowAdminModal(false);
+      setPasscode("");
+      setErrorMsg("");
+    } else {
+      setErrorMsg("الرمز السري غير صحيح!");
+    }
+  };
+
+  return (
+    <div dir="rtl" className="min-h-screen bg-gradient-to-br from-[#062c43] via-[#054569] to-[#0a6c74] text-white font-sans pb-16">
+      <header className="border-b border-cyan-500/30 bg-[#041f30]/80 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+              <Trophy className="w-7 h-7 text-slate-950" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold tracking-wide bg-gradient-to-r from-white via-cyan-200 to-amber-300 bg-clip-text text-transparent">
+                بطولة اليورو للمشاركين
+              </h1>
+              <p className="text-xs text-cyan-300/80">بدون سنة • 24 مشاركاً • 6 مجموعات</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {isAdmin ? (
+              <>
+                <button
+                  onClick={copyShareableLink}
+                  className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-500/20"
+                >
+                  {copiedLink ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                  {copiedLink ? "تم نسخ الرابط بنجاح!" : "نسخ رابط النتائج للمشاركين"}
+                </button>
+                <button
+                  onClick={simulateRandomScores}
+                  className="flex items-center gap-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-2 rounded-xl text-xs font-bold transition"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  محاكاة
+                </button>
+                <button
+                  onClick={resetTournament}
+                  className="flex items-center gap-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-
